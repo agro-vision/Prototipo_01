@@ -57,6 +57,8 @@ def main():
                         help="el ancho de la imagen capturada (1920 por defecto)", default=1920)
     parser.add_argument("--height", type=int, required=False,
                         help="el alto de la imagen capturada (1080 por defecto)", default=1080)
+    parser.add_argument("--fps", type=int, required=False,
+                        help="límite de FPS de procesamiento (30 por defecto)", default=30)
     parser.add_argument("--headless", dest="headless", action="store_true", 
                         help="ejecutar sin abrir una ventana de previsualización")
     parser.add_argument("--db", type=str, required=False,
@@ -95,9 +97,15 @@ def main():
     detections = {}
     last_clear = time.time()
 
+    ti = time.time()
+
     while True:
         try:
             ret, frame = cap.read()
+
+            tf = time.time()
+            if tf-ti < 1.0 / args.fps:
+                continue
 
             # Detectar los marcadores
             corners, ids, _ = detector.detectMarkers(frame)
@@ -131,7 +139,6 @@ def main():
                     last_clear = time.time()
                     detections.clear()
 
-                time.sleep(0.05)
 
             if not args.headless:
                 cv2.imshow("Agrovision", frame)
@@ -139,6 +146,8 @@ def main():
                 key = cv2.waitKey(1)
                 if key == ord('q'):        
                     break
+
+            ti = time.time()
 
         except KeyboardInterrupt:
             break
