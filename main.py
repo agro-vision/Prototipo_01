@@ -2,7 +2,8 @@ import sys
 import time
 import cv2
 import argparse
-import numpy as np
+import psycopg2
+import urllib.parse
 
 # Parámetros del detector de marcadores
 aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_250)
@@ -13,7 +14,9 @@ detector = cv2.aruco.ArucoDetector(aruco_dict, parameters)
 MIN_DETECTION_FRAMES = 10
 CLEAR_INTERVAL_SEC = 60
 
-VALID_IDS = list(range(11))
+# TODO: Dejar que la DB maneje este caso
+VALID_IDS = [1,2,3,4,5]
+
 
 def draw_bboxes(image, corners, ids):
     for (markerCorner, markerID) in zip(corners, ids):
@@ -56,7 +59,23 @@ def main():
                         help="el alto de la imagen capturada (1080 por defecto)", default=1080)
     parser.add_argument("--headless", dest="headless", action="store_true", 
                         help="ejecutar sin abrir una ventana de previsualización")
+    parser.add_argument("--db", type=str, required=False,
+                        help="string de conexión a la base de datos")
     args = parser.parse_args()
+
+    # Conectarse a la DB
+    if args.db:
+        conn_str = urllib.parse.urlparse(args.db)
+        if conn_str.scheme != "postgresql":
+            parser.error("El string de conexión debe ser de la forma postgresql://user:password@hostname:post/dbname")
+
+        conn = psycopg2.connect(
+            host=conn_str.hostname,
+            port=conn_str.port,
+            database=conn_str.path.split("/")[0],
+            user=conn_str.username,
+            password=conn_str.password
+        )
 
     # Abrir el dispositivo de captura
     cap = cv2.VideoCapture(args.device)
@@ -94,6 +113,17 @@ def main():
 
                     if d == MIN_DETECTION_FRAMES and idx in VALID_IDS:
                         print(f"Animal {idx} detectado")
+
+                        # Insertar en la DB
+                        # TODO: Cambiar por MQTT / REST
+                        if args.db:
+                            success, buffer = cv2.imencode(".jpg", frame)
+
+                            with conn.cursor() as cur:
+                                cur.execute("INSERT INTO log (time, animal_id, snapshot) VALUES (current_timestamp, %s, %s);",
+                                            (int(idx), psycopg2.Binary(buffer)))
+                                conn.commit()
+
 
                     detections[idx] = d+1
                             
